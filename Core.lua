@@ -600,7 +600,7 @@ local function ContainsRaidMarker(lowered)
 			return true
 		end
 	end
-	return string.find(lowered, "ui-raittargetingicon_", 1, true) ~= nil
+	return string.find(lowered, "ui-raidtargetingicon_", 1, true) ~= nil
 end
 
 -- Walks a message and returns the reason it should be hidden: "words" for a
@@ -891,10 +891,34 @@ end
 -- script must match its case exactly - which hardly matters, since whole
 -- messages in that script can be hidden with the script checkbox instead.
 function ns.RefreshWordFilterCache()
+	local clean = {}
 	local cache = {}
-	local words = ns.db and ns.db.wordFilter.words or {}
+	local words = ns.db and ns.db.wordFilter and ns.db.wordFilter.words or {}
+	local seen = {}
 	for index = 1, #words do
-		cache[index] = string.lower(words[index])
+		local word = words[index]
+		if type(word) == "string" then
+			word = ns.Trim(StripChatCodes(word))
+			if word ~= "" then
+				local lowered = string.lower(word)
+				if not seen[lowered] then
+					seen[lowered] = true
+					clean[#clean + 1] = word
+					cache[#cache + 1] = lowered
+				end
+			end
+		end
+	end
+	-- Replace the saved list with the clean copy, in place: the UI and the
+	-- saved table keep pointing at the same table.
+	if ns.db and ns.db.wordFilter and type(ns.db.wordFilter.words) == "table" then
+		local oldCount = #ns.db.wordFilter.words
+		for index = 1, #clean do
+			ns.db.wordFilter.words[index] = clean[index]
+		end
+		for index = oldCount, #clean + 1, -1 do
+			ns.db.wordFilter.words[index] = nil
+		end
 	end
 	ns.loweredWords = cache
 end
@@ -903,14 +927,18 @@ end
 -- word pasted straight out of chat can still carry colour codes, so those
 -- are taken out first - otherwise it could never match anything.
 function ns.AddWordFilter(word)
-	word = ns.Trim(StripChatCodes(word or ""))
+	if type(word) ~= "string" then
+		return false, "empty"
+	end
+	word = ns.Trim(StripChatCodes(word))
 	if word == "" then
 		return false, "empty"
 	end
 	local loweredWord = string.lower(word)
 	local words = ns.db.wordFilter.words
 	for index = 1, #words do
-		if string.lower(words[index]) == loweredWord then
+		local existing = words[index]
+		if type(existing) == "string" and string.lower(existing) == loweredWord then
 			return false, "duplicate"
 		end
 	end
@@ -921,9 +949,12 @@ end
 
 -- Removes one exact word from the list, along with its tally.
 function ns.RemoveWordFilter(word)
+	if type(word) ~= "string" then
+		return false
+	end
 	local words = ns.db.wordFilter.words
 	for index = 1, #words do
-		if words[index] == word then
+		if type(words[index]) == "string" and words[index] == word then
 			table.remove(words, index)
 			if ns.db.wordCounts then
 				ns.db.wordCounts[string.lower(word)] = nil
@@ -965,15 +996,27 @@ ns.expansionCache = {}
 -- enough to read, values fit well inside the 255-byte chat limit. The cut
 -- never lands inside a multi-byte character, so a Cyrillic value is not
 -- broken in half by a byte limit.
+local function TruncateUtf8(text, limit)
+	if #text <= limit then
+		return text
+	end
+	local cut = 1
+	local index = 1
+	while index <= limit do
+		local codepoint, nextIndex = NextCodepoint(text, index)
+		if not codepoint or not nextIndex or nextIndex - 1 > limit then
+			break
+		end
+		cut = nextIndex
+		index = nextIndex
+	end
+	return string.sub(text, 1, cut - 1)
+end
+
 local function ClampExpansionText(text, limit)
 	text = ns.Trim(text or "")
 	if #text > limit then
-		text = string.sub(text, 1, limit)
-		local last = string.byte(text, #text)
-		while last and last >= 0x80 and last < 0xC0 do
-			text = string.sub(text, 1, #text - 1)
-			last = string.byte(text, #text)
-		end
+		text = TruncateUtf8(text, limit)
 	end
 	return text
 end
@@ -993,18 +1036,34 @@ end
 function ns.RefreshExpansionCache()
 	local cache = {}
 	local rules = (ns.db and ns.db.expansions and ns.db.expansions.rules) or {}
-	for index = #rules, 1, -1 do
-		local rule = rules[index]
-		if type(rule) ~= "table" or type(rule.key) ~= "string" or type(rule.value) ~= "string" then
-			table.remove(rules, index)
-		end
-	end
+	local clean, seen = {}, {}
 	for index = 1, #rules do
 		local rule = rules[index]
-		local key = string.lower(ns.Trim(rule.key))
-		if key ~= "" then
-			cache[key] = rule.value
+		if type(rule) == "table" and type(rule.key) == "string" and type(rule.value) == "string" then
+			local key = ClampExpansionText(rule.key, 40)
+			local value = ClampExpansionText(rule.value, 200)
+			if key ~= "" and value ~= "" and IsValidExpansionKey(key)
+				and string.sub(value, 1, 1) ~= "/" then
+				local lowered = string.lower(key)
+				if not seen[lowered] then
+					seen[lowered] = true
+					rule.key, rule.value = key, value
+					clean[#clean + 1] = rule
+				end
+			end
 		end
+	end
+	-- Replace the saved list with the clean copy, in place, so the window and
+	-- the saved table keep pointing at the same table.
+	local oldCount = #rules
+	for index = 1, #clean do
+		rules[index] = clean[index]
+	end
+	for index = oldCount, #clean + 1, -1 do
+		rules[index] = nil
+	end
+	for index = 1, #clean do
+		cache[string.lower(clean[index].key)] = clean[index].value
 	end
 	ns.expansionCache = cache
 end
@@ -1490,7 +1549,9 @@ local function HandleTonguesEvent(self, event, ...)
 			return
 		end
 		self:UnregisterEvent("ADDON_LOADED")
-		TonguesDB = TonguesDB or {}
+		if type(TonguesDB) ~= "table" then
+			TonguesDB = {}
+		end
 		ns.db = TonguesDB
 		ApplyDefaults(ns.db, DEFAULTS)
 		-- One-time touch-up for settings saved by the first build: it

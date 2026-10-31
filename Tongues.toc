@@ -2,7 +2,7 @@
 ## Title: Tongues
 ## Notes: Hides chat messages written in foreign scripts (Russian, Chinese, Japanese and more) and messages that contain words you never want to see again. Every script and every kind of chat has its own checkbox, and a counter keeps track of what has been blocked. Also expands short forms in your own messages before they are sent: type "brb", send "be right back", in the same channel you were already writing in.
 ## Author: Mikkel
-## Version: 1.1.5
+## Version: 20261031
 ## SavedVariables: TonguesDB
 ## IconTexture: Interface\Icons\Spell_Shadow_CurseOfTounges
 
