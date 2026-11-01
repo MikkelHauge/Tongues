@@ -6,6 +6,16 @@ local addonName, ns = ...
 -- Amber accent for the section headings in the windows, the same as Ammonia.
 local ACCENT = { 1.0, 0.72, 0.25 }
 
+-- The eight raid markers as inline textures, for the tooltips on the two
+-- marker rows: the point of the hover is to show what gets filtered.
+local function RaidMarkerIcons()
+	local parts = {}
+	for index = 1, 8 do
+		parts[index] = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_"..index..":16|t"
+	end
+	return table.concat(parts, " ")
+end
+
 -- The Curse of Tongues icon - an old friend for a language filter.
 local ICON_PATH = "Interface\\Icons\\Spell_Shadow_CurseOfTounges"
 
@@ -709,13 +719,13 @@ local function CreateOptionsFrame()
 		"Catch any message carrying a marker - {rt1} to {rt8} or {Skull}, {Star}, {X} and the rest.",
 		function() return ns.db.markers.on end,
 		function(value) ns.db.markers.on = value end,
-		{ "Example:", "{Skull} pull the left pack first", "{rt4} on the healer" })
+		{ "Example:", RaidMarkerIcons(), "{Skull} pull the left pack first", "{rt4} on the healer" })
 
 	AddCheckboxRow(content, "Also in party, raid and instance chat",
 		"Leave this unticked to keep markers where they do a job: public chat is checked, group chat is not.",
 		function() return ns.db.markers.groupChat end,
 		function(value) ns.db.markers.groupChat = value end,
-		{ "Example:", "Party: {rt4} on the healer", "Raid: {Skull} pull the far pack" })
+		{ "Example:", RaidMarkerIcons(), "Party: {rt4} on the healer", "Raid: {Skull} pull the far pack" })
 	y = y - 4
 
 	-- Word filter
