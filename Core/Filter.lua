@@ -253,20 +253,30 @@ local function IsFromPlayer(sender)
 end
 
 -- CHAT_MSG_CHANNEL carries every public channel, but they arrive as one
--- event. The two zone channels are told apart here so General, Trade and the
--- custom channels can have their own checkboxes. channelIndex is the reliable
+-- event. The two zone channels are told apart here so General, Trade and
+-- everything else can have their own checkboxes. channelIndex is the reliable
 -- signal: General is channel 1 and Trade channel 2 whatever the client
--- language; the lowercased base name is the fallback for clients whose event
--- does not pass the index.
+-- language, and every other number - LocalDefense, WorldDefense,
+-- LookingForGroup and any custom channel - belongs to "channels". When a
+-- client does not pass the index, the channel names are the fallback.
 local function ChannelSettingsKey(channelIndex, channelBaseName, channelName)
 	local base = type(channelBaseName) == "string" and string.lower(channelBaseName) or ""
-	if channelIndex == 1 or base == "general" then
+	if channelIndex ~= nil then
+		if channelIndex == 1 then
+			return "general"
+		end
+		if channelIndex == 2 then
+			return "trade"
+		end
+		return "channels"
+	end
+	if base == "general" then
 		return "general"
 	end
-	if channelIndex == 2 or base == "trade" then
+	if base == "trade" then
 		return "trade"
 	end
-	if channelIndex == nil and base == "" and type(channelName) == "string" then
+	if base == "" and type(channelName) == "string" then
 		local lower = string.lower(channelName)
 		if string.sub(lower, 1, 7) == "general" then
 			return "general"

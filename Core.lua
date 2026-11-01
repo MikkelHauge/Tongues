@@ -182,7 +182,7 @@ ns.LANGUAGES = LANGUAGES
 local CHANNEL_GROUPS = {
 	{ key = "say",      label = "Say",                                      events = { "CHAT_MSG_SAY" } },
 	{ key = "yell",     label = "Yell",                                     events = { "CHAT_MSG_YELL" } },
-	{ key = "channels", label = "Other channels (custom)",                  events = { "CHAT_MSG_CHANNEL" } },
+	{ key = "channels", label = "Other channels (all)",                     events = { "CHAT_MSG_CHANNEL" } },
 	{ key = "communities", label = "Communities chat",                      events = { "CHAT_MSG_COMMUNITIES_CHANNEL" } },
 	{ key = "raid",     label = "Raid",                                     events = { "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER" } },
 	{ key = "instance", label = "Instance chat (dungeons, battlegrounds)",  events = { "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_BATTLEGROUND", "CHAT_MSG_BATTLEGROUND_LEADER" } },
