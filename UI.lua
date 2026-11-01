@@ -6,14 +6,13 @@ local addonName, ns = ...
 -- Amber accent for the section headings in the windows, the same as Ammonia.
 local ACCENT = { 1.0, 0.72, 0.25 }
 
--- The eight raid markers as inline textures, for the tooltips on the two
--- marker rows: the point of the hover is to show what gets filtered.
-local function RaidMarkerIcons()
-	local parts = {}
-	for index = 1, 8 do
-		parts[index] = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_"..index..":16|t"
-	end
-	return table.concat(parts, " ")
+-- The raid markers as inline textures, for the tooltips on the two marker
+-- rows: the point of the hover is to show what gets filtered. Width and
+-- height are both given - the client does not size an inline texture from
+-- one number alone.
+local RAID_MARKER_TEXTURE = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_"
+local function RaidMarkerIcon(index)
+	return "|T"..RAID_MARKER_TEXTURE..index..":18:18|t"
 end
 
 -- The Curse of Tongues icon - an old friend for a language filter.
@@ -715,17 +714,26 @@ local function CreateOptionsFrame()
 	-- rather than spam - hence the second box.
 	AddDividerHeading("Raid markers in chat")
 
+	-- The examples are written the way a spammer uses the markers: inside the
+	-- message, several at a time, next to the words.
+	local skull = RaidMarkerIcon(8)
+	local moon = RaidMarkerIcon(5)
+	local diamond = RaidMarkerIcon(3)
+	local cross = RaidMarkerIcon(7)
+	local markerSpam = skull..skull.." JOHNS SERVICES "..skull..skull
+		.." SELLING BOOSTS "..moon..moon.." <Dungeon> "..diamond.." <Dungeon> "..moon..moon
+
 	AddCheckboxRow(content, "Hide messages containing raid markers",
 		"Catch any message carrying a marker - {rt1} to {rt8} or {Skull}, {Star}, {X} and the rest.",
 		function() return ns.db.markers.on end,
 		function(value) ns.db.markers.on = value end,
-		{ "Example:", RaidMarkerIcons(), "{Skull} pull the left pack first", "{rt4} on the healer" })
+		{ "Example:", markerSpam })
 
 	AddCheckboxRow(content, "Also in party, raid and instance chat",
 		"Leave this unticked to keep markers where they do a job: public chat is checked, group chat is not.",
 		function() return ns.db.markers.groupChat end,
 		function(value) ns.db.markers.groupChat = value end,
-		{ "Example:", RaidMarkerIcons(), "Party: {rt4} on the healer", "Raid: {Skull} pull the far pack" })
+		{ "Example:", "Party: "..skull.." PULL LEFT, "..moon.." ON THE HEALER, "..cross.." STAY OUT" })
 	y = y - 4
 
 	-- Word filter
