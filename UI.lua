@@ -493,8 +493,32 @@ local function CreateOptionsFrame()
 	-- One checkbox setting: a title line, the box itself on the right and an
 	-- optional explanation under the title. The next row is placed below
 	-- whatever the explanation really took up, so a wrapped note pushes the
-	-- following row down instead of being overlapped by it.
-	local function AddCheckboxRow(parent, title, descText, getter, setter)
+	-- following row down instead of being overlapped by it. A row can carry a
+	-- tooltip (a list of lines, the first one being the heading); the hover
+	-- region sits over the text only, so the box itself still takes clicks.
+	local function AddCheckboxRow(parent, title, descText, getter, setter, tooltip)
+		if tooltip then
+			local hover = CreateFrame("Frame", nil, parent)
+			hover:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y + 2)
+			hover:SetPoint("RIGHT", parent, "RIGHT", -54, 0)
+			hover:SetHeight(16)
+			hover:EnableMouse(true)
+			hover:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				for index = 1, #tooltip do
+					if index == 1 then
+						GameTooltip:AddLine(tooltip[index], 1, 0.82, 0.36)
+					else
+						GameTooltip:AddLine(tooltip[index], 1, 1, 1, true)
+					end
+				end
+				GameTooltip:Show()
+			end)
+			hover:SetScript("OnLeave", function()
+				GameTooltip:Hide()
+			end)
+		end
+
 		local label = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 		label:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
 		label:SetText(title)
@@ -611,11 +635,28 @@ local function CreateOptionsFrame()
 	local scriptNote = AddNote(content, y, "Messages containing a letter of a ticked script are hidden. Kana anywhere makes a line Japanese; kanji with no kana is Chinese. Accented Latin letters (e, u, o with accents) stay visible.")
 	y = y - TextHeight(scriptNote) - 20
 
+	-- The example line each script's tooltip shows: the heading first, then
+	-- the text in that script. The catch-all bucket has several scripts, so
+	-- each of its lines carries its language name first.
+	local function LanguageTooltip(language)
+		local lines = { "Example:" }
+		if language.examples then
+			for entryIndex = 1, #language.examples do
+				local entry = language.examples[entryIndex]
+				lines[#lines + 1] = "|cff9d9d9d"..entry[1]..":|r "..entry[2]
+			end
+		elseif language.example then
+			lines[#lines + 1] = language.example
+		end
+		return lines
+	end
+
 	for index = 1, #ns.LANGUAGES do
 		local language = ns.LANGUAGES[index]
 		AddCheckboxRow(content, language.label, nil,
 			function() return ns.db.languageFilter[language.key] end,
-			function(value) ns.db.languageFilter[language.key] = value end)
+			function(value) ns.db.languageFilter[language.key] = value end,
+			LanguageTooltip(language))
 	end
 
 	-- The catch-all: anything left over that this client would draw as an
@@ -818,7 +859,7 @@ local function CreateOptionsFrame()
 	valueBox:SetScript("OnEscapePressed", ClearExpansionBoxes)
 
 	y = y - 30
-	local expansionNote = AddNote(content, y, "Type the short form in chat and the longer text is sent instead. Whole words only, and only in your own messages: links and slash commands are never touched.")
+	local expansionNote = AddNote(content, y, "Type the short form in chat and the longer text is sent instead. Whole words only, and only in your own messages: links and slash commands are never touched. Short forms are not case sensitive.")
 	y = y - TextHeight(expansionNote) - 12
 
 	local manageExpansionsButton = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
@@ -856,7 +897,7 @@ local function CreateOptionsFrame()
 	resetCountersButton:SetPoint("TOPRIGHT", content, "TOPRIGHT", -14, countersHeadingY + 2)
 	resetCountersButton:SetText("Reset counters")
 	resetCountersButton:SetScript("OnClick", function()
-		ns.ResetCounters()
+		StaticPopup_Show("TONGUES_RESET_COUNTERS")
 	end)
 
 	-- The grand total across every counter, parked on the left side of the
@@ -1174,20 +1215,85 @@ end
 -------------------------------------------------------------------------------
 
 -- One rule per row, and the row is the editor: the short form on the left, the
--- text to send instead on the right, both live edit boxes. Enter saves a row,
--- Escape puts it back, clicking away drops whatever was half-typed - so a
--- stray keystroke can never end up saved by accident. The red X on the right
--- takes the rule off the list.
+-- text to send instead on the right, both live edit boxes. An edit is held in
+-- a small pending table, keyed by the rule it belongs to, until Save (or Enter)
+-- writes it - so sorting the list, or another row changing, never loses a
+-- half-typed row. The red X takes the rule off the list; the Save button
+-- appears only while a row differs from what is saved, and closing the window
+-- with pending rows asks whether to keep them.
 local EXPANSION_ROW_HEIGHT = 26
 
--- Puts a row's boxes back to what is saved. Used by Escape, by losing focus
--- and by a refused edit, so all three behave the same way.
+-- The window's four orders, cycled by the Sort button. "newest" is the saved
+-- list read backwards, since new rules are appended as they are added.
+local EXPANSION_SORTS = {
+	{ key = "newest", label = "Newest first" },
+	{ key = "oldest", label = "Oldest first" },
+	{ key = "az",     label = "A to Z" },
+	{ key = "za",     label = "Z to A" },
+}
+
+local function CurrentExpansionSort()
+	local mode = ns.db and ns.db.expansions and ns.db.expansions.sort
+	for index = 1, #EXPANSION_SORTS do
+		if EXPANSION_SORTS[index].key == mode then
+			return index
+		end
+	end
+	return 1
+end
+
+local function UpdateExpansionSortButton()
+	if expansionFrame and expansionFrame.sortButton then
+		expansionFrame.sortButton:SetText("Sort: "..EXPANSION_SORTS[CurrentExpansionSort()].label)
+	end
+end
+
+-- The rules in display order. The saved list itself is never reordered.
+local function SortedExpansions()
+	local rules = ns.db.expansions.rules
+	local order = {}
+	for index = 1, #rules do
+		order[index] = rules[index]
+	end
+	local mode = EXPANSION_SORTS[CurrentExpansionSort()].key
+	if mode == "newest" then
+		local reversed = {}
+		for index = #order, 1, -1 do
+			reversed[#reversed + 1] = order[index]
+		end
+		return reversed
+	elseif mode == "az" then
+		table.sort(order, function(a, b) return string.lower(a.key) < string.lower(b.key) end)
+	elseif mode == "za" then
+		table.sort(order, function(a, b) return string.lower(a.key) > string.lower(b.key) end)
+	end
+	return order
+end
+
+-- The pending edit for one rule, or nil when the row matches what is saved.
+local function PendingExpansion(rule)
+	return expansionFrame and rule and expansionFrame.pending[rule] or nil
+end
+
+local function UpdateExpansionSaveButton(row)
+	if row and row.save then
+		row.save:SetShown(PendingExpansion(row.rule) ~= nil)
+	end
+end
+
+-- Puts a row's boxes back to what is saved and forgets its pending edit.
 local function ResetExpansionRow(row)
 	if not row or not row.rule then
 		return
 	end
+	if expansionFrame then
+		expansionFrame.pending[row.rule] = nil
+	end
+	row.updating = true
 	row.keyBox:SetText(row.rule.key)
 	row.valueBox:SetText(row.rule.value)
+	row.updating = false
+	UpdateExpansionSaveButton(row)
 end
 
 -- Saves one row. Everything that can go wrong is reported in chat and the
@@ -1203,11 +1309,13 @@ local function CommitExpansionRow(row)
 	local key = row.keyBox:GetText()
 	local value = row.valueBox:GetText()
 	if key == rule.key and value == rule.value then
-		-- Nothing changed; do not chatter about it.
+		expansionFrame.pending[rule] = nil
+		UpdateExpansionSaveButton(row)
 		return
 	end
 	local ok, reason = ns.UpdateExpansion(rule, key, value)
 	if ok then
+		expansionFrame.pending[rule] = nil
 		ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_ON")
 		ns.Print('Now expanding "'..rule.key..'" to "'..rule.value..'".')
 	else
@@ -1226,16 +1334,86 @@ local function CommitExpansionRow(row)
 	RefreshAll()
 end
 
+-- Watches a row's two boxes so the Save button follows what is typed.
+local function WatchExpansionRow(row)
+	local function NoteEdit()
+		if row.updating or not row.rule then
+			return
+		end
+		local key = row.keyBox:GetText()
+		local value = row.valueBox:GetText()
+		if key == row.rule.key and value == row.rule.value then
+			expansionFrame.pending[row.rule] = nil
+		else
+			expansionFrame.pending[row.rule] = { key = key, value = value }
+		end
+		UpdateExpansionSaveButton(row)
+	end
+	row.keyBox:SetScript("OnTextChanged", NoteEdit)
+	row.valueBox:SetScript("OnTextChanged", NoteEdit)
+end
+
+local function HasPendingExpansions()
+	return expansionFrame and next(expansionFrame.pending) ~= nil
+end
+
+-- Writes every pending edit in one go, for the close prompt's Yes. Rows that
+-- fail validation are left at their saved text and reported in chat.
+local function SavePendingExpansions()
+	if not expansionFrame then
+		return
+	end
+	local saved = 0
+	for rule, pending in pairs(expansionFrame.pending) do
+		local ok, reason = ns.UpdateExpansion(rule, pending.key, pending.value)
+		if ok then
+			saved = saved + 1
+		elseif reason == "duplicate" then
+			ns.Print("Another expansion already uses that short form.")
+		elseif reason == "invalid" then
+			ns.Print("The short form must be one word: letters, digits or underscore.")
+		elseif reason == "empty" then
+			ns.Print("Type both the short form and the text to send.")
+		elseif reason == "command" then
+			ns.Print("The long text cannot start with a slash: that would make it a chat command.")
+		end
+	end
+	wipe(expansionFrame.pending)
+	RefreshExpansionList()
+	RefreshAll()
+	if saved > 0 then
+		ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_ON")
+		ns.Print("Expansion changes saved.")
+	end
+end
+
+local function DiscardPendingExpansions()
+	if expansionFrame then
+		wipe(expansionFrame.pending)
+	end
+end
+
+-- The real close, past the unsaved-changes guard in CreateExpansionFrame.
+local function CloseExpansionFrameNow()
+	if not expansionFrame then
+		return
+	end
+	expansionFrame.savePromptShown = false
+	expansionFrame.forceHide = true
+	expansionFrame:Hide()
+	expansionFrame.forceHide = false
+end
+
 -- Redraws the whole list from the saved rules. Rows are created once and
 -- reused; each one captures the rule table it shows, so a row keeps pointing
--- at its own rule even after rows above it are removed.
+-- at its own rule even after rows above it are removed or the list is sorted.
 function RefreshExpansionList()
 	if not expansionFrame then
 		return
 	end
 	local frame = expansionFrame
-	local rules = ns.db.expansions.rules
-	local count = #rules
+	local order = SortedExpansions()
+	local count = #order
 
 	local rowWidth = frame.scroll:GetWidth()
 	if rowWidth < 50 then
@@ -1245,7 +1423,7 @@ function RefreshExpansionList()
 	frame.content:SetWidth(rowWidth)
 
 	for index = 1, count do
-		local rule = rules[index]
+		local rule = order[index]
 		local row = frame.rows[index]
 		if not row then
 			row = CreateFrame("Frame", nil, frame.content)
@@ -1266,7 +1444,7 @@ function RefreshExpansionList()
 			row.valueBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
 			row.valueBox:SetHeight(22)
 			row.valueBox:SetPoint("LEFT", row.arrow, "RIGHT", 4, 0)
-			row.valueBox:SetPoint("RIGHT", row, "RIGHT", -28, 0)
+			row.valueBox:SetPoint("RIGHT", row, "RIGHT", -76, 0)
 			row.valueBox:SetAutoFocus(false)
 			row.valueBox:SetMaxLetters(200)
 			row.valueBox:SetTextInsets(8, 4, 0, 0)
@@ -1286,16 +1464,21 @@ function RefreshExpansionList()
 				ResetExpansionRow(row)
 				self:ClearFocus()
 			end)
-			row.keyBox:SetScript("OnEditFocusLost", function()
-				ResetExpansionRow(row)
-			end)
-			row.valueBox:SetScript("OnEditFocusLost", function()
-				ResetExpansionRow(row)
+			WatchExpansionRow(row)
+
+			-- Shown only while the row differs from what is saved.
+			row.save = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+			row.save:SetSize(46, 20)
+			row.save:SetPoint("RIGHT", row, "RIGHT", -2, 0)
+			row.save:SetText("Save")
+			row.save:Hide()
+			row.save:SetScript("OnClick", function()
+				CommitExpansionRow(row)
 			end)
 
 			row.remove = CreateFrame("Button", nil, row)
 			row.remove:SetSize(20, 20)
-			row.remove:SetPoint("RIGHT", -2, 0)
+			row.remove:SetPoint("RIGHT", -52, 0)
 			row.remove:SetNormalTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
 			row.remove:SetHighlightTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Highlight")
 			row.remove:SetPushedTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Down")
@@ -1321,18 +1504,25 @@ function RefreshExpansionList()
 		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", frame.content, "TOPLEFT", 0, -(index - 1) * EXPANSION_ROW_HEIGHT)
 		row:SetWidth(rowWidth)
-		row.keyBox:SetText(rule.key)
-		row.valueBox:SetText(rule.value)
+		local pending = frame.pending[rule]
+		row.updating = true
+		row.keyBox:SetText(pending and pending.key or rule.key)
+		row.valueBox:SetText(pending and pending.value or rule.value)
+		row.updating = false
 		row.divider:SetShown(index < count)
 		row.remove:SetScript("OnClick", function()
 			local shown = row.rule
-			if shown and ns.RemoveExpansion(shown) then
-				ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_OFF")
-				ns.Print('No longer expanding "'..shown.key..'".')
+			if shown then
+				frame.pending[shown] = nil
+				if ns.RemoveExpansion(shown) then
+					ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_OFF")
+					ns.Print('No longer expanding "'..shown.key..'".')
+				end
 			end
 			RefreshExpansionList()
 			RefreshAll()
 		end)
+		UpdateExpansionSaveButton(row)
 		row:Show()
 	end
 
@@ -1349,6 +1539,7 @@ function RefreshExpansionList()
 			frame.clearButton:Enable()
 		end
 	end
+	UpdateExpansionSortButton()
 	local listBar = frame.scroll and frame.scroll.ScrollBar
 	if listBar then
 		pcall(listBar.SetValue, listBar, 0)
@@ -1377,11 +1568,34 @@ local function CreateExpansionFrame()
 	frame.TitleText:SetText("Tongues - text expansions")
 	table.insert(UISpecialFrames, "TonguesExpansionFrame")
 	frame.rows = {}
+	-- Rule -> { key, value } for every row that has been edited but not saved.
+	frame.pending = {}
 
 	local scroll = CreateFrame("ScrollFrame", "TonguesExpansionScroll", frame, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", 14, -38)
-	scroll:SetPoint("BOTTOMRIGHT", -30, 70)
+	scroll:SetPoint("TOPLEFT", 14, -56)
+	scroll:SetPoint("BOTTOMRIGHT", -30, 86)
 	frame.scroll = scroll
+
+	-- Column headings, fixed above the list so the two boxes read as a short
+	-- form and the message it sends.
+	local header = CreateFrame("Frame", nil, frame)
+	header:SetPoint("TOPLEFT", 24, -42)
+	header:SetPoint("TOPRIGHT", -38, -42)
+	header:SetHeight(14)
+
+	local shortHeading = header:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	shortHeading:SetPoint("LEFT", header, "LEFT", 0, 0)
+	shortHeading:SetText("Short form")
+
+	local messageHeading = header:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	messageHeading:SetPoint("LEFT", header, "LEFT", 132, 0)
+	messageHeading:SetText("Message")
+
+	local headerLine = header:CreateTexture(nil, "ARTWORK")
+	headerLine:SetColorTexture(1, 1, 1, 0.08)
+	headerLine:SetHeight(1)
+	headerLine:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", -10, -4)
+	headerLine:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 10, -4)
 
 	local content = CreateFrame("Frame", nil, scroll)
 	content:SetSize(10, 10)
@@ -1392,16 +1606,16 @@ local function CreateExpansionFrame()
 	frame.content = content
 
 	frame.emptyText = frame:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-	frame.emptyText:SetPoint("TOP", scroll, "TOP", -10, -30)
+	frame.emptyText:SetPoint("TOP", scroll, "TOP", -10, -20)
 	frame.emptyText:SetWidth(380)
 	frame.emptyText:SetJustifyH("CENTER")
 	frame.emptyText:SetText("No expansions yet.\nAdd them in the options window (/tongues).")
 
 	local note = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	note:SetPoint("BOTTOM", scroll, "BOTTOM", -10, -24)
+	note:SetPoint("BOTTOM", scroll, "BOTTOM", -10, -40)
 	note:SetWidth(380)
 	note:SetJustifyH("CENTER")
-	note:SetText("Whole words only, in your own messages; links and slash commands are left alone.\nPress Enter in a row to save an edit.")
+	note:SetText("Whole words only, in your own messages; links and slash commands stay.\nShort forms are not case sensitive. Enter or Save keeps an edit.\nClosing with unsaved rows asks whether to save them.")
 
 	local clearButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	clearButton:SetSize(100, 22)
@@ -1416,7 +1630,41 @@ local function CreateExpansionFrame()
 		StaticPopup_Show("TONGUES_CLEAR_EXPANSIONS", tostring(count))
 	end)
 
+	-- The order the list is shown in; cycled by the button and remembered
+	-- between sessions.
+	local sortButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	sortButton:SetSize(150, 22)
+	sortButton:SetPoint("BOTTOMRIGHT", -14, 14)
+	sortButton:SetScript("OnClick", function()
+		local nextIndex = CurrentExpansionSort() + 1
+		if nextIndex > #EXPANSION_SORTS then
+			nextIndex = 1
+		end
+		ns.db.expansions.sort = EXPANSION_SORTS[nextIndex].key
+		UpdateExpansionSortButton()
+		RefreshExpansionList()
+	end)
+	frame.sortButton = sortButton
+	UpdateExpansionSortButton()
+
+	-- Closing with unsaved rows asks first. ESC closes this window through
+	-- UISpecialFrames, which calls Hide directly, so Hide itself is wrapped:
+	-- with pending edits the close is parked and the popup decides, and the
+	-- real Hide only runs once the player has answered.
+	local realHide = frame.Hide
+	frame.Hide = function(self)
+		if not self.forceHide and self:IsShown() and HasPendingExpansions() then
+			if not self.savePromptShown then
+				self.savePromptShown = true
+				StaticPopup_Show("TONGUES_SAVE_EXPANSIONS")
+			end
+			return
+		end
+		return realHide(self)
+	end
+
 	frame:SetScript("OnShow", function()
+		frame.savePromptShown = false
 		RefreshExpansionList()
 	end)
 end
@@ -1456,9 +1704,43 @@ StaticPopupDialogs["TONGUES_CLEAR_EXPANSIONS"] = {
 	button1 = YES,
 	button2 = NO,
 	OnAccept = function()
+		DiscardPendingExpansions()
 		ns.ClearExpansions()
 		RefreshExpansionList()
 		RefreshAll()
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+-- Asked when the expansions window closes with rows that have not been saved.
+StaticPopupDialogs["TONGUES_SAVE_EXPANSIONS"] = {
+	text = "Do you want to save your changes to the text expansions?",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function()
+		SavePendingExpansions()
+		CloseExpansionFrameNow()
+	end,
+	OnCancel = function()
+		DiscardPendingExpansions()
+		CloseExpansionFrameNow()
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = false,
+	preferredIndex = 3,
+}
+
+-- Reset counters used to wipe the tallies the moment the button was pressed.
+StaticPopupDialogs["TONGUES_RESET_COUNTERS"] = {
+	text = "Reset all counters to zero?",
+	button1 = YES,
+	button2 = NO,
+	OnAccept = function()
+		ns.ResetCounters()
 	end,
 	timeout = 0,
 	whileDead = true,

@@ -122,18 +122,53 @@ end
 
 -- "label" is what the checkbox in the window says, "counter" is what the
 -- "blocked so far" line says ("You have blocked 12 messages in Russian.").
--- The saved settings and counters are keyed by "key".
+-- The saved settings and counters are keyed by "key". "example" (and for the
+-- catch-all bucket, "examples") is the line the checkbox tooltip shows, in
+-- the script itself, so the window can show what a ticked box would hide.
 local LANGUAGES = {
-	{ key = "russian",  label = "Russian (Cyrillic)",              counter = "Russian" },
-	{ key = "chinese",  label = "Chinese (kanji, no kana)",        counter = "Chinese" },
-	{ key = "japanese", label = "Japanese (kana)",                 counter = "Japanese" },
-	{ key = "korean",   label = "Korean (hangul)",                 counter = "Korean" },
-	{ key = "greek",    label = "Greek",                           counter = "Greek" },
-	{ key = "hebrew",   label = "Hebrew",                          counter = "Hebrew" },
-	{ key = "arabic",   label = "Arabic",                          counter = "Arabic" },
-	{ key = "thai",     label = "Thai",                            counter = "Thai" },
-	{ key = "other",    label = "Other scripts (Armenian, Georgian, Indic ...)", counter = "other scripts" },
-	{ key = "styled",   label = "Styled Latin (spam fonts)",        counter = "styled Latin" },
+	{ key = "russian",  label = "Russian (Cyrillic)",              counter = "Russian",
+		example = "Привет от аддона Tongues" },
+	{ key = "chinese",  label = "Chinese (kanji)",                 counter = "Chinese",
+		example = "来自 Tongues 插件的问候" },
+	{ key = "japanese", label = "Japanese (kana)",                 counter = "Japanese",
+		example = "Tongues アドオンからこんにちは" },
+	{ key = "korean",   label = "Korean (hangul)",                 counter = "Korean",
+		example = "Tongues 애드온에서 안녕하세요" },
+	{ key = "greek",    label = "Greek",                           counter = "Greek",
+		example = "Γεια σας από το πρόσθετο Tongues" },
+	{ key = "hebrew",   label = "Hebrew",                          counter = "Hebrew",
+		example = "שלום מהתוספת Tongues" },
+	{ key = "arabic",   label = "Arabic",                          counter = "Arabic",
+		example = "مرحبا من إضافة Tongues" },
+	{ key = "thai",     label = "Thai",                            counter = "Thai",
+		example = "สวัสดีจากส่วนเสริม Tongues" },
+	{ key = "other",    label = "Other scripts (Armenian, Georgian, Indic ...)", counter = "other scripts",
+		examples = {
+			{ "Armenian",  "Բարև ձեզ Tongues հավելվածից" },
+			{ "Georgian",  "გამარჯობა Tongues დამატებიდან" },
+			{ "Syriac",    "ܫܠܡܐ ܡܢ Tongues" },
+			{ "Thaana",    "Tongues އެޑޮންގެ ފަރާތުން ހެލޯ" },
+			{ "Hindi",     "Tongues ऐडऑन की ओर से नमस्ते" },
+			{ "Bengali",   "Tongues অ্যাডঅন থেকে হ্যালো" },
+			{ "Punjabi",   "Tongues ਐਡਆਨ ਵੱਲੋਂ ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ" },
+			{ "Gujarati",  "Tongues ઍડઑન તરફથી નમસ્તે" },
+			{ "Oriya",     "Tongues ଆଡଅନରୁ ନମସ୍କାର" },
+			{ "Tamil",     "Tongues ஆடானில் இருந்து வணக்கம்" },
+			{ "Telugu",    "Tongues యాడ్ఆన్ నుండి నమస్కారం" },
+			{ "Kannada",   "Tongues ಆಡ್ಆನ್ನಿಂದ ನಮಸ್ಕಾರ" },
+			{ "Malayalam", "Tongues ആഡ്ഓണിൽ നിന്ന് നമസ്കാരം" },
+			{ "Sinhala",   "Tongues ඇඩොන් වෙතින් ආයුබෝවන්" },
+			{ "Lao",       "Tongues ແອັດອອນ ຈາກ ສະບາຍດີ" },
+			{ "Tibetan",   "Tongues ཨེཌོན་ནས་བཀྲ་ཤིས་བདེ་ལེགས" },
+			{ "Burmese",   "Tongues အက်ဒွန်မှ မင်္ဂလာပါ" },
+			{ "Amharic",   "ከ Tongues አዶን ሰላምታ" },
+			{ "Cherokee",  "ᎣᏏᏲ Tongues ᎠᏰᎵ" },
+			{ "Khmer",     "Tongues អាដុន សួស្តី" },
+			{ "Mongolian", "Tongues нэмэлтээс сайн байна уу" },
+			{ "Fullwidth Latin", "Ｈｅｌｌｏ ｆｒｏｍ ｔｈｅ Ｔｏｎｇｕｅｓ ａｄｄｏｎ" },
+		} },
+	{ key = "styled",   label = "Styled Latin (spam fonts)",        counter = "styled Latin",
+		example = "𝐇𝐞𝐥𝐥𝐨 𝐟𝐫𝐨𝐦 𝐭𝐡𝐞 𝐓𝐨𝐧𝐠𝐮𝐞𝐬 𝐚𝐝𝐝𝐨𝐧" },
 }
 ns.LANGUAGES = LANGUAGES
 
@@ -239,10 +274,13 @@ local DEFAULTS = {
 	},
 	-- Phone-keyboard style replacements for the player's own messages.
 	-- "rules" is a list of { key = "brb", value = "be right back" } pairs,
-	-- kept in the order they were added so the window reads predictably.
+	-- kept in the order they were added; the window can display them in a
+	-- different order without touching this one. "sort" remembers which of
+	-- the window's sort modes the player last chose.
 	expansions = {
 		on = true,
 		rules = {},
+		sort = "newest",
 	},
 }
 
