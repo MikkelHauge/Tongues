@@ -632,7 +632,7 @@ local function CreateOptionsFrame()
 
 	-- The scripts, one checkbox each
 	AddDividerHeading("Foreign scripts")
-	local scriptNote = AddNote(content, y, "Messages containing a letter of a ticked script are hidden. Kana anywhere makes a line Japanese; kanji with no kana is Chinese. Accented Latin letters (e, u, o with accents) stay visible.")
+	local scriptNote = AddNote(content, y, "Messages containing a letter of a ticked script are hidden. Kana anywhere makes a line Japanese; kanji with no kana is Chinese. Accented Latin letters (e, u, o with accents) stay visible. A script your client's font cannot draw appears in chat as boxes; it is still classified and hidden by its own checkbox.")
 	y = y - TextHeight(scriptNote) - 20
 
 	-- The example line each script's tooltip shows: the heading first, then
@@ -675,12 +675,14 @@ local function CreateOptionsFrame()
 	AddCheckboxRow(content, "Hide messages containing raid markers",
 		"Catch any message carrying a marker - {rt1} to {rt8} or {Skull}, {Star}, {X} and the rest.",
 		function() return ns.db.markers.on end,
-		function(value) ns.db.markers.on = value end)
+		function(value) ns.db.markers.on = value end,
+		{ "Example:", "{Skull} pull the left pack first", "{rt4} on the healer" })
 
 	AddCheckboxRow(content, "Also in party, raid and instance chat",
 		"Leave this unticked to keep markers where they do a job: public chat is checked, group chat is not.",
 		function() return ns.db.markers.groupChat end,
-		function(value) ns.db.markers.groupChat = value end)
+		function(value) ns.db.markers.groupChat = value end,
+		{ "Example:", "Party: {rt4} on the healer", "Raid: {Skull} pull the far pack" })
 	y = y - 4
 
 	-- Word filter
@@ -857,6 +859,13 @@ local function CreateOptionsFrame()
 	end
 	keyBox:SetScript("OnEscapePressed", ClearExpansionBoxes)
 	valueBox:SetScript("OnEscapePressed", ClearExpansionBoxes)
+	-- Tab walks the two boxes, left to right and back.
+	keyBox:SetScript("OnTabPressed", function()
+		valueBox:SetFocus()
+	end)
+	valueBox:SetScript("OnTabPressed", function()
+		keyBox:SetFocus()
+	end)
 
 	y = y - 30
 	local expansionNote = AddNote(content, y, "Type the short form in chat and the longer text is sent instead. Whole words only, and only in your own messages: links and slash commands are never touched. Short forms are not case sensitive.")
@@ -877,15 +886,13 @@ local function CreateOptionsFrame()
 	table.insert(refreshers, function()
 		local count = #ns.db.expansions.rules
 		if count == 0 then
-			expansionCountNote:SetText("The list is empty.")
-			manageExpansionsButton:Disable()
+			expansionCountNote:SetText("The list is empty - open it to add one.")
 		elseif count == 1 then
 			expansionCountNote:SetText("1 expansion on the list.")
-			manageExpansionsButton:Enable()
 		else
 			expansionCountNote:SetText(count.." expansions on the list.")
-			manageExpansionsButton:Enable()
 		end
+		manageExpansionsButton:Enable()
 	end)
 	y = y - 34
 
@@ -1248,7 +1255,9 @@ local function UpdateExpansionSortButton()
 	end
 end
 
--- The rules in display order. The saved list itself is never reordered.
+-- The rules in display order. The saved list itself is never reordered. The
+-- blank row from the Add button always sits first, so it stays under the eye
+-- while it is being filled in, whatever the chosen order.
 local function SortedExpansions()
 	local rules = ns.db.expansions.rules
 	local order = {}
@@ -1261,32 +1270,101 @@ local function SortedExpansions()
 		for index = #order, 1, -1 do
 			reversed[#reversed + 1] = order[index]
 		end
-		return reversed
+		order = reversed
 	elseif mode == "az" then
 		table.sort(order, function(a, b) return string.lower(a.key) < string.lower(b.key) end)
 	elseif mode == "za" then
 		table.sort(order, function(a, b) return string.lower(a.key) > string.lower(b.key) end)
 	end
+	if expansionFrame and expansionFrame.draft then
+		table.insert(order, 1, expansionFrame.draft)
+	end
 	return order
+end
+
+-- The Add button is one button that lives in the middle of an empty window
+-- and in the bottom row as soon as there is a row to show.
+local function UpdateExpansionAddButton()
+	local frame = expansionFrame
+	if not frame or not frame.addButton then
+		return
+	end
+	local empty = #ns.db.expansions.rules == 0 and not frame.draft
+	frame.addButton:ClearAllPoints()
+	if empty then
+		frame.addButton:SetSize(170, 26)
+		frame.addButton:SetPoint("CENTER", frame.scroll, "CENTER", -10, 0)
+	else
+		frame.addButton:SetSize(100, 22)
+		frame.addButton:SetPoint("BOTTOMLEFT", 120, 14)
+	end
 end
 
 -- The pending edit for one rule, or nil when the row matches what is saved.
 local function PendingExpansion(rule)
-	return expansionFrame and rule and expansionFrame.pending[rule] or nil
+	if not expansionFrame or not rule or expansionFrame.draft == rule then
+		return nil
+	end
+	return expansionFrame.pending[rule]
+end
+
+-- The Add button opens one blank row. It is not a saved rule yet: its two
+-- boxes live on the draft table itself, and the row is only written into the
+-- list when Save is pressed.
+local function DraftHasText(draft)
+	return draft ~= nil and (draft.key ~= "" or draft.value ~= "")
 end
 
 local function UpdateExpansionSaveButton(row)
-	if row and row.save then
+	if not row or not row.save then
+		return
+	end
+	if row.isDraft then
+		row.save:SetShown(DraftHasText(row.rule))
+	else
 		row.save:SetShown(PendingExpansion(row.rule) ~= nil)
 	end
 end
 
--- Puts a row's boxes back to what is saved and forgets its pending edit.
+-- One line for every reason an expansion edit can be refused.
+local function PrintExpansionReason(reason)
+	if reason == "duplicate" then
+		ns.Print("Another expansion already uses that short form.")
+	elseif reason == "invalid" then
+		ns.Print("The short form must be one word: letters, digits or underscore.")
+	elseif reason == "empty" then
+		ns.Print("Type both the short form and the text to send.")
+	elseif reason == "command" then
+		ns.Print("The long text cannot start with a slash: that would make it a chat command.")
+	end
+end
+
+-- Writes the blank row from the Add button into the saved list. A short form
+-- another rule already uses is refused rather than merged.
+local function SaveDraftExpansion(draft)
+	local key = ns.Trim(draft.key or "")
+	local value = ns.Trim(draft.value or "")
+	if key == "" or value == "" then
+		return false, "empty"
+	end
+	local lowered = string.lower(key)
+	for index = 1, #ns.db.expansions.rules do
+		if string.lower(ns.db.expansions.rules[index].key) == lowered then
+			return false, "duplicate"
+		end
+	end
+	return ns.SetExpansion(key, value)
+end
+
+-- Puts a row's boxes back to what is saved and forgets its pending edit. A
+-- draft row has nothing saved to go back to, so it is simply emptied.
 local function ResetExpansionRow(row)
 	if not row or not row.rule then
 		return
 	end
-	if expansionFrame then
+	if row.isDraft then
+		row.rule.key, row.rule.value = "", ""
+	elseif expansionFrame then
 		expansionFrame.pending[row.rule] = nil
 	end
 	row.updating = true
@@ -1306,6 +1384,21 @@ local function CommitExpansionRow(row)
 	if not rule then
 		return
 	end
+	if row.isDraft then
+		rule.key, rule.value = row.keyBox:GetText(), row.valueBox:GetText()
+		local ok, reason = SaveDraftExpansion(rule)
+		if ok then
+			expansionFrame.draft = nil
+			ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_ON")
+			ns.Print('Now expanding "'..ns.Trim(rule.key)..'" to "'..ns.Trim(rule.value)..'".')
+		else
+			-- Keep the row and its text so it can be corrected.
+			PrintExpansionReason(reason)
+		end
+		RefreshExpansionList()
+		RefreshAll()
+		return
+	end
 	local key = row.keyBox:GetText()
 	local value = row.valueBox:GetText()
 	if key == rule.key and value == rule.value then
@@ -1320,21 +1413,14 @@ local function CommitExpansionRow(row)
 		ns.Print('Now expanding "'..rule.key..'" to "'..rule.value..'".')
 	else
 		ResetExpansionRow(row)
-		if reason == "duplicate" then
-			ns.Print("Another expansion already uses that short form.")
-		elseif reason == "invalid" then
-			ns.Print("The short form must be one word: letters, digits or underscore.")
-		elseif reason == "empty" then
-			ns.Print("Type both the short form and the text to send.")
-		elseif reason == "command" then
-			ns.Print("The long text cannot start with a slash: that would make it a chat command.")
-		end
+		PrintExpansionReason(reason)
 	end
 	RefreshExpansionList()
 	RefreshAll()
 end
 
--- Watches a row's two boxes so the Save button follows what is typed.
+-- Watches a row's two boxes so the Save button follows what is typed. A
+-- draft keeps its text on the draft table; a saved row keeps it pending.
 local function WatchExpansionRow(row)
 	local function NoteEdit()
 		if row.updating or not row.rule then
@@ -1342,7 +1428,9 @@ local function WatchExpansionRow(row)
 		end
 		local key = row.keyBox:GetText()
 		local value = row.valueBox:GetText()
-		if key == row.rule.key and value == row.rule.value then
+		if row.isDraft then
+			row.rule.key, row.rule.value = key, value
+		elseif key == row.rule.key and value == row.rule.value then
 			expansionFrame.pending[row.rule] = nil
 		else
 			expansionFrame.pending[row.rule] = { key = key, value = value }
@@ -1354,7 +1442,13 @@ local function WatchExpansionRow(row)
 end
 
 local function HasPendingExpansions()
-	return expansionFrame and next(expansionFrame.pending) ~= nil
+	if not expansionFrame then
+		return false
+	end
+	if next(expansionFrame.pending) then
+		return true
+	end
+	return DraftHasText(expansionFrame.draft)
 end
 
 -- Writes every pending edit in one go, for the close prompt's Yes. Rows that
@@ -1368,16 +1462,20 @@ local function SavePendingExpansions()
 		local ok, reason = ns.UpdateExpansion(rule, pending.key, pending.value)
 		if ok then
 			saved = saved + 1
-		elseif reason == "duplicate" then
-			ns.Print("Another expansion already uses that short form.")
-		elseif reason == "invalid" then
-			ns.Print("The short form must be one word: letters, digits or underscore.")
-		elseif reason == "empty" then
-			ns.Print("Type both the short form and the text to send.")
-		elseif reason == "command" then
-			ns.Print("The long text cannot start with a slash: that would make it a chat command.")
+		else
+			PrintExpansionReason(reason)
 		end
 	end
+	local draft = expansionFrame.draft
+	if DraftHasText(draft) then
+		local ok, reason = SaveDraftExpansion(draft)
+		if ok then
+			saved = saved + 1
+		else
+			PrintExpansionReason(reason)
+		end
+	end
+	expansionFrame.draft = nil
 	wipe(expansionFrame.pending)
 	RefreshExpansionList()
 	RefreshAll()
@@ -1390,6 +1488,7 @@ end
 local function DiscardPendingExpansions()
 	if expansionFrame then
 		wipe(expansionFrame.pending)
+		expansionFrame.draft = nil
 	end
 end
 
@@ -1464,6 +1563,19 @@ function RefreshExpansionList()
 				ResetExpansionRow(row)
 				self:ClearFocus()
 			end)
+			-- Tab walks the boxes left to right, row by row, and wraps around.
+			row.keyBox:SetScript("OnTabPressed", function()
+				row.valueBox:SetFocus()
+			end)
+			row.valueBox:SetScript("OnTabPressed", function()
+				local nextRow = frame.rows[(row.index or 1) + 1]
+				if not nextRow or not nextRow:IsShown() then
+					nextRow = frame.rows[1]
+				end
+				if nextRow and nextRow.keyBox then
+					nextRow.keyBox:SetFocus()
+				end
+			end)
 			WatchExpansionRow(row)
 
 			-- Shown only while the row differs from what is saved.
@@ -1500,28 +1612,34 @@ function RefreshExpansionList()
 			frame.rows[index] = row
 		end
 
+		local isDraft = (frame.draft ~= nil and rule == frame.draft)
 		row.rule = rule
+		row.isDraft = isDraft
+		row.index = index
 		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", frame.content, "TOPLEFT", 0, -(index - 1) * EXPANSION_ROW_HEIGHT)
 		row:SetWidth(rowWidth)
-		local pending = frame.pending[rule]
+		local pending = (not isDraft) and frame.pending[rule] or nil
 		row.updating = true
 		row.keyBox:SetText(pending and pending.key or rule.key)
 		row.valueBox:SetText(pending and pending.value or rule.value)
 		row.updating = false
 		row.divider:SetShown(index < count)
-		row.remove:SetScript("OnClick", function()
-			local shown = row.rule
-			if shown then
-				frame.pending[shown] = nil
-				if ns.RemoveExpansion(shown) then
-					ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_OFF")
-					ns.Print('No longer expanding "'..shown.key..'".')
+		row.remove:SetShown(not isDraft)
+		if not isDraft then
+			row.remove:SetScript("OnClick", function()
+				local shown = row.rule
+				if shown then
+					frame.pending[shown] = nil
+					if ns.RemoveExpansion(shown) then
+						ns.PlayUISound("IG_MAINMENU_OPTION_CHECKBOX_OFF")
+						ns.Print('No longer expanding "'..shown.key..'".')
+					end
 				end
-			end
-			RefreshExpansionList()
-			RefreshAll()
-		end)
+				RefreshExpansionList()
+				RefreshAll()
+			end)
+		end
 		UpdateExpansionSaveButton(row)
 		row:Show()
 	end
@@ -1531,15 +1649,16 @@ function RefreshExpansionList()
 	end
 
 	frame.content:SetHeight(math.max(count * EXPANSION_ROW_HEIGHT, 1))
-	frame.emptyText:SetShown(count == 0)
+	local savedCount = #ns.db.expansions.rules
 	if frame.clearButton then
-		if count == 0 then
+		if savedCount == 0 then
 			frame.clearButton:Disable()
 		else
 			frame.clearButton:Enable()
 		end
 	end
 	UpdateExpansionSortButton()
+	UpdateExpansionAddButton()
 	local listBar = frame.scroll and frame.scroll.ScrollBar
 	if listBar then
 		pcall(listBar.SetValue, listBar, 0)
@@ -1605,12 +1724,6 @@ local function CreateExpansionFrame()
 	end
 	frame.content = content
 
-	frame.emptyText = frame:CreateFontString(nil, "ARTWORK", "GameFontDisable")
-	frame.emptyText:SetPoint("TOP", scroll, "TOP", -10, -20)
-	frame.emptyText:SetWidth(380)
-	frame.emptyText:SetJustifyH("CENTER")
-	frame.emptyText:SetText("No expansions yet.\nAdd them in the options window (/tongues).")
-
 	local note = frame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	note:SetPoint("BOTTOM", scroll, "BOTTOM", -10, -40)
 	note:SetWidth(380)
@@ -1630,6 +1743,23 @@ local function CreateExpansionFrame()
 		StaticPopup_Show("TONGUES_CLEAR_EXPANSIONS", tostring(count))
 	end)
 
+	-- Adds a blank row at the top of the list. Once there is something to
+	-- show, the same button moves to the bottom row of the window.
+	local addButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	addButton:SetSize(100, 22)
+	addButton:SetText("Add")
+	addButton:SetScript("OnClick", function()
+		if not expansionFrame.draft then
+			expansionFrame.draft = { key = "", value = "" }
+			RefreshExpansionList()
+		end
+		local row = expansionFrame.rows[1]
+		if row and row.keyBox then
+			row.keyBox:SetFocus()
+		end
+	end)
+	frame.addButton = addButton
+
 	-- The order the list is shown in; cycled by the button and remembered
 	-- between sessions.
 	local sortButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -1646,6 +1776,7 @@ local function CreateExpansionFrame()
 	end)
 	frame.sortButton = sortButton
 	UpdateExpansionSortButton()
+	UpdateExpansionAddButton()
 
 	-- Closing with unsaved rows asks first. ESC closes this window through
 	-- UISpecialFrames, which calls Hide directly, so Hide itself is wrapped:
@@ -1659,6 +1790,10 @@ local function CreateExpansionFrame()
 				StaticPopup_Show("TONGUES_SAVE_EXPANSIONS")
 			end
 			return
+		end
+		-- An empty Add row is not a change worth keeping across a close.
+		if self.draft and not DraftHasText(self.draft) then
+			self.draft = nil
 		end
 		return realHide(self)
 	end
