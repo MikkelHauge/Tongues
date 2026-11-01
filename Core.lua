@@ -86,7 +86,8 @@ local addonName, ns = ...
 -- commands and the window's little notices.
 function ns.Print(message)
 	if DEFAULT_CHAT_FRAME then
-		DEFAULT_CHAT_FRAME:AddMessage("|cffffb347[Tongues]|r "..tostring(message))
+		-- Red for Tongues' tag; the amber belongs to Ammonia.
+		DEFAULT_CHAT_FRAME:AddMessage("|cffff5252[Tongues]|r "..tostring(message))
 	end
 end
 
