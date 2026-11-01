@@ -103,6 +103,25 @@ local function IsValidExpansionValue(value)
 	return string.sub(value, 1, 1) ~= "/"
 end
 
+-- The usage tally belongs to the short form, so it follows a rename and is
+-- dropped with the rule.
+local function MoveExpansionCount(oldKey, newKey)
+	local counts = ns.db.expansionCounts
+	if not counts then
+		return
+	end
+	local oldLower = string.lower(oldKey or "")
+	local newLower = string.lower(newKey or "")
+	if oldLower == "" or oldLower == newLower then
+		return
+	end
+	local used = counts[oldLower]
+	if used then
+		counts[newLower] = (counts[newLower] or 0) + used
+		counts[oldLower] = nil
+	end
+end
+
 -- Adds a rule, or updates the text of one whose short form is already there.
 -- Returns true plus "added" or "updated", or false plus the reason.
 function ns.SetExpansion(key, value)
@@ -122,7 +141,9 @@ function ns.SetExpansion(key, value)
 	for index = 1, #rules do
 		local rule = rules[index]
 		if string.lower(rule.key) == loweredKey then
+			local oldKey = rule.key
 			rule.key, rule.value = key, value
+			MoveExpansionCount(oldKey, key)
 			ns.RefreshExpansionCache()
 			return true, "updated"
 		end
@@ -158,28 +179,43 @@ function ns.UpdateExpansion(rule, key, value)
 			return false, "duplicate"
 		end
 	end
+	local oldKey = rule.key
 	rule.key, rule.value = key, value
+	MoveExpansionCount(oldKey, key)
 	ns.RefreshExpansionCache()
 	return true
 end
 
--- Removes one rule by its table, so a row always deletes what it shows.
+-- Removes one rule by its table, so a row always deletes what it shows. Its
+-- usage tally goes with it.
 function ns.RemoveExpansion(rule)
 	local rules = ns.db.expansions.rules
 	for index = 1, #rules do
 		if rules[index] == rule then
 			table.remove(rules, index)
+			if ns.db.expansionCounts then
+				ns.db.expansionCounts[string.lower(rule.key)] = nil
+			end
 			ns.RefreshExpansionCache()
+			if ns.RefreshExpansionCounts then
+				ns.RefreshExpansionCounts()
+			end
 			return true
 		end
 	end
 	return false
 end
 
--- Empties the whole list.
+-- Empties the whole list, tallies included.
 function ns.ClearExpansions()
 	wipe(ns.db.expansions.rules)
+	if ns.db.expansionCounts then
+		wipe(ns.db.expansionCounts)
+	end
 	ns.RefreshExpansionCache()
+	if ns.RefreshExpansionCounts then
+		ns.RefreshExpansionCounts()
+	end
 end
 
 -- Matches the replacement's capitals to how the short form was typed, so
@@ -251,6 +287,7 @@ local function ExpandText(text)
 
 	local pieces, kept, index, length = {}, 1, 1, #text
 	local changed = false
+	local used
 	while index <= length do
 		local byte, codepoint, nextIndex = CharacterAt(text, index)
 		if byte and IsExpansionWordChar(byte, codepoint) then
@@ -265,7 +302,8 @@ local function ExpandText(text)
 				index = afterIndex
 			end
 			local word = string.sub(text, start, index - 1)
-			local replacement = rules[string.lower(word)]
+			local loweredWord = string.lower(word)
+			local replacement = rules[loweredWord]
 			if replacement then
 				if start > kept then
 					pieces[#pieces + 1] = string.sub(text, kept, start - 1)
@@ -273,6 +311,8 @@ local function ExpandText(text)
 				pieces[#pieces + 1] = MatchCase(word, replacement)
 				kept = index
 				changed = true
+				used = used or {}
+				used[loweredWord] = (used[loweredWord] or 0) + 1
 			end
 		else
 			-- Not a word character: copy it through and carry on.
@@ -290,6 +330,16 @@ local function ExpandText(text)
 		-- Better to send what the player typed than to have the client cut
 		-- the line in half somewhere they did not expect.
 		return text
+	end
+	-- Tallied only now: a line that was never sent is not a use.
+	if used and ns.db and ns.db.expansionCounts then
+		local counts = ns.db.expansionCounts
+		for key, amount in pairs(used) do
+			counts[key] = (counts[key] or 0) + amount
+		end
+	end
+	if ns.RefreshExpansionCounts then
+		pcall(ns.RefreshExpansionCounts)
 	end
 	return expanded
 end

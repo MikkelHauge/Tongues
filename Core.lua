@@ -264,6 +264,9 @@ local DEFAULTS = {
 	-- Per-word tallies for the blocked words window, keyed by the lowered
 	-- word (so "WTS Gold" and "wts gold" share one tally).
 	wordCounts = {},
+	-- How many times each short form has actually been expanded, keyed by
+	-- the lowered short form. Removed with the rule, moved when it is renamed.
+	expansionCounts = {},
 	icon = {
 		shown = true,
 		locked = false,

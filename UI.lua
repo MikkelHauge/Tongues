@@ -65,6 +65,40 @@ local function IsRetailClient()
 	return true
 end
 
+-- How often one short form has fired, and the sum across the whole list.
+-- Counts are keyed by the lowered short form, like the block list's tallies.
+local function ExpansionUsage(rule)
+	if not rule or not ns.db or not ns.db.expansionCounts then
+		return 0
+	end
+	return ns.db.expansionCounts[string.lower(rule.key)] or 0
+end
+
+local function ExpansionUsageTotal()
+	local total = 0
+	local counts = (ns.db and ns.db.expansionCounts) or {}
+	local rules = (ns.db and ns.db.expansions and ns.db.expansions.rules) or {}
+	for index = 1, #rules do
+		total = total + (counts[string.lower(rules[index].key)] or 0)
+	end
+	return total
+end
+
+-- The total sits beside the "Text expansions" heading in the options window.
+local expansionUsageNote
+
+local function UpdateExpansionUsageTotal()
+	if not expansionUsageNote then
+		return
+	end
+	local total = ExpansionUsageTotal()
+	if total == 1 then
+		expansionUsageNote:SetText("1 use")
+	else
+		expansionUsageNote:SetText(ns.FormatCount(total).." uses")
+	end
+end
+
 -- Every setting control registers a small "read the saved value and show
 -- it" function here; this is what re-syncs the whole window in one go.
 local function RefreshAll()
@@ -830,8 +864,14 @@ local function CreateOptionsFrame()
 
 	-- Text expansions: the phone-keyboard half of the addon. Two boxes and a
 	-- button, laid out like the word filter above, plus the switch that turns
-	-- the whole thing off without losing the list.
-	AddDividerHeading("Text expansions")
+	-- the whole thing off without losing the list. The total usage sits on
+	-- the heading line, right-aligned.
+	local expansionHeader, expansionHeadingY = AddDividerHeading("Text expansions")
+	expansionUsageNote = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+	expansionUsageNote:SetPoint("TOPRIGHT", content, "TOPRIGHT", -14, expansionHeadingY + 2)
+	expansionUsageNote:SetJustifyH("RIGHT")
+	expansionUsageNote:SetTextColor(0.58, 0.58, 0.58)
+	table.insert(refreshers, UpdateExpansionUsageTotal)
 
 	AddCheckboxRow(content, "Enable text expansions",
 		"Rewrite your own chat just before it is sent. The channel, whisper target and language are left exactly as you picked them.",
@@ -1594,10 +1634,15 @@ function RefreshExpansionList()
 			row.valueBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
 			row.valueBox:SetHeight(22)
 			row.valueBox:SetPoint("LEFT", row.arrow, "RIGHT", 4, 0)
-			row.valueBox:SetPoint("RIGHT", row, "RIGHT", -76, 0)
+			row.valueBox:SetPoint("RIGHT", row, "RIGHT", -130, 0)
 			row.valueBox:SetAutoFocus(false)
 			row.valueBox:SetMaxLetters(200)
 			row.valueBox:SetTextInsets(8, 4, 0, 0)
+
+			row.usage = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+			row.usage:SetPoint("RIGHT", row, "RIGHT", -80, 0)
+			row.usage:SetWidth(46)
+			row.usage:SetJustifyH("RIGHT")
 
 			row.keyBox:SetScript("OnEnterPressed", function()
 				row.valueBox:SetFocus()
@@ -1690,6 +1735,9 @@ function RefreshExpansionList()
 				RefreshExpansionList()
 				RefreshAll()
 			end)
+			row.usage:SetText(ns.FormatCount(ExpansionUsage(rule)))
+		else
+			row.usage:SetText("")
 		end
 		UpdateExpansionSaveButton(row)
 		row:Show()
@@ -1719,11 +1767,30 @@ end
 -- while the window happens to be open.
 ns.RefreshExpansionList = RefreshExpansionList
 
+-- The live half of the usage counters: called whenever an expansion fires, and
+-- after a rule is removed or the list is cleared. It only re-reads the texts,
+-- so an open window keeps up without rebuilding or stealing focus.
+function ns.RefreshExpansionCounts()
+	if expansionFrame and expansionFrame:IsShown() then
+		for index = 1, #expansionFrame.rows do
+			local row = expansionFrame.rows[index]
+			if row:IsShown() then
+				if row.isDraft then
+					row.usage:SetText("")
+				elseif row.rule then
+					row.usage:SetText(ns.FormatCount(ExpansionUsage(row.rule)))
+				end
+			end
+		end
+	end
+	UpdateExpansionUsageTotal()
+end
+
 -- Builds the window once, on the first login.
 local function CreateExpansionFrame()
 	local frame = CreateFrame("Frame", "TonguesExpansionFrame", UIParent, "BasicFrameTemplateWithInset")
 	expansionFrame = frame
-	frame:SetSize(460, 440)
+	frame:SetSize(540, 440)
 	-- Left of centre, so it sits beside the blocked words window (which is at
 	-- +160) instead of on top of it: the two lists are often open together.
 	frame:SetPoint("CENTER", UIParent, "CENTER", -260, 0)
@@ -1760,6 +1827,12 @@ local function CreateExpansionFrame()
 	local messageHeading = header:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
 	messageHeading:SetPoint("LEFT", header, "LEFT", 132, 0)
 	messageHeading:SetText("Message")
+
+	local usageHeading = header:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	usageHeading:SetPoint("RIGHT", scroll, "RIGHT", -90, 0)
+	usageHeading:SetWidth(46)
+	usageHeading:SetJustifyH("RIGHT")
+	usageHeading:SetText("Usage")
 
 	local headerLine = header:CreateTexture(nil, "ARTWORK")
 	headerLine:SetColorTexture(1, 1, 1, 0.08)
