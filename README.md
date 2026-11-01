@@ -2,30 +2,27 @@
 
 Tongues is a WoW Forever addon that does 3 things.
 
-1. It hides chat messages written in scripts you don't read
+1. It hides chat messages written in scripts you don't read, like Cyrillic (Russian) or Hangul (Korean)
 
-2. Hides chat messages that contain words you never want to see again. 
+2. Hides chat messages that contain words from a custom list of keywords.
 
-3. Rewrites your own short forms before they are sent, similar to "Text Replacement" on iPhone and "Text shortcuts" or "Personal dictionary" or Android devices.
+3. Rewrites your own short forms before they are sent, similar to "Text Replacement" on iPhone and "Text shortcuts" or "Personal dictionary" or Android devices. (brb -> be right back)
 
-Only the kinds of chat you tick are filtered: Say, Yell, General, Trade, Other
-channels (all), Raid, Instance, Party, Guild and Whispers. 
-
-Say, yell and the public channels start ticked, the personal ones
-stay off until you ask for them. Your own messages are never hidden.
+Say, yell and the public channels are filtered by default. The rest are unfiltered, but can be included in the filter.
 
 It does not censor words inside a message, does not block players, and cannot
-take back a message that has already appeared. It filters chat text, not names,
-tooltips, mail or the auction house. 
+take back a message that has already appeared. It filters ONLY chat text, **not** names,
+tooltips, mail or the auction house. It only filters the WHOLE message.
 
-A script your client's font cannot draw will appear in chat as boxes, it is still classified and hidden by its own checkbox, and the "Hide anything the chat font cannot draw" box catches all of
-them at once. 
+A script your client's font cannot draw will appear in chat as boxes, it is still classified and hidden by its own checkbox, and the "Hide anything the chat font cannot draw" box catches all of them at once. 
 
 Example of unreadable script (supposed to be arabic): <img width="296" height="30" alt="{C71B404D-BC07-4D3B-BC3C-B35B36FF37E0}" src="https://github.com/user-attachments/assets/897a1ccd-c332-4076-ade3-c9aae9c6e64c" />
 
 Note hidden messags are still sent, everyone else can see them.
 
-## Examples
+And the messages **you** send, are never filtered.
+
+## Screenshots/examples
 
 **Options window**
 
