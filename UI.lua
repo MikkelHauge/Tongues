@@ -41,6 +41,21 @@ local function GetAddonVersion()
 	return "?"
 end
 
+-- True only on the modern (Retail) client, where Communities exist. The C_Club
+-- API is what the Communities feature itself is built on and is absent from
+-- Forever and the Classic clients; the WOW_PROJECT check is a second guard
+-- for clients that ship a stub. nil == nil must not read as "Retail", hence
+-- the explicit type checks.
+local function IsRetailClient()
+	if not C_Club then
+		return false
+	end
+	if type(WOW_PROJECT_ID) == "number" and type(WOW_PROJECT_MAINLINE) == "number" then
+		return WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
+	end
+	return true
+end
+
 -- Every setting control registers a small "read the saved value and show
 -- it" function here; this is what re-syncs the whole window in one go.
 local function RefreshAll()
@@ -625,9 +640,13 @@ local function CreateOptionsFrame()
 
 	for index = 1, #ns.CHANNEL_GROUPS do
 		local group = ns.CHANNEL_GROUPS[index]
-		AddCheckboxRow(content, group.label, nil,
-			function() return ns.db.channels[group.key] end,
-			function(value) ns.db.channels[group.key] = value end)
+		-- Communities chat only exists on Retail; Classic and Forever have no
+		-- such feature, so the checkbox would be dead weight there.
+		if group.key ~= "communities" or IsRetailClient() then
+			AddCheckboxRow(content, group.label, nil,
+				function() return ns.db.channels[group.key] end,
+				function(value) ns.db.channels[group.key] = value end)
+		end
 	end
 
 	-- The scripts, one checkbox each
