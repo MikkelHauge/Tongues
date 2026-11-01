@@ -8,20 +8,14 @@ local addonName, ns = ...
 -- The hello when the world is ready: the master switch and the grand total
 -- of everything blocked so far, printed once per session. The checkbox in
 -- the window ("Say hello on login") turns it off without touching anything
--- else. One line, in the addon's red, the way the icon looks.
-local WELCOME_RED = { 1.00, 0.32, 0.32 }
-
+-- else. The tag carries the addon's red; the text stays in the chat's own
+-- colour, like every other line.
 local function PrintWelcome()
 	if ns.db.greeting == false then
 		return
 	end
-	if not DEFAULT_CHAT_FRAME then
-		return
-	end
 	local state = ns.db.enabled and "Enabled" or "Disabled"
-	local total = ns.FormatCount(ns.GetTotalBlocked())
-	DEFAULT_CHAT_FRAME:AddMessage("[Tongues] "..state..". Blocked messages: "..total,
-		WELCOME_RED[1], WELCOME_RED[2], WELCOME_RED[3])
+	ns.Print(state..". Blocked messages: "..ns.FormatCount(ns.GetTotalBlocked()))
 end
 
 -- One frame listens for everything. ADDON_LOADED arrives first and is where
