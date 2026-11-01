@@ -52,21 +52,17 @@ Note the test character is called Tongues
 ## How it works
 
 Tongues reads chat through the chat system's message-event filters: one small
-function per chat event, called for every incoming message, returning true to
-hide it. Messages are walked as UTF-8, one character at a time, so scripts can
-be told apart and each counter can name the right one. The block list checks
-whole words in the lowered message, with chat colour codes stripped and link
-payloads masked so a numeric block entry cannot hide every item whose ID
-contains it.
+function per chat event, called for every incoming message. If the function catches that the message contains text that should be filtered, the message is hidden.
 
-Expansions happen in the client's own "this line is about to be sent" callback.
-By the time it runs the client has already worked out the channel and target, so
-only the text is replaced and the line still goes exactly where it was headed.
-If an expansion would push the line past 255 bytes, the text you typed is sent
-unchanged. (Up to 255 characters)
+The block list checks whole words in the message (not case sensitive).
+
+**Text Expansions** If an expansion would push the line past 255 bytes, the text you typed is sent
+unchanged. (Up to 255 characters, less for non-standard characters, raid markers etc.
 
 Settings, counters and the block and expansion lists live in `TonguesDB` and
-survive login and reload. There are no libraries and no dependencies.
+survive login and reload. 
+
+There are no libraries or dependencies.
 
 ### Available commands
 
