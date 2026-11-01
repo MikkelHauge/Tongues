@@ -67,6 +67,18 @@ local function HandleTonguesEvent(self, event, ...)
 				ns.db.channels.instance = false
 			end
 		end
+		-- Revision 2 split the old single "channels" box into General, Trade
+		-- and everything else. Saves from before that get the old box's value
+		-- copied into both new boxes once, so unticking channels still keeps
+		-- all channels quiet.
+		if (ns.db.settingsRevision or 0) < 2 then
+			ns.db.settingsRevision = 2
+			if ns.db.channels then
+				local on = ns.db.channels.channels and true or false
+				ns.db.channels.general = on
+				ns.db.channels.trade = on
+			end
+		end
 		-- One-time placement on the minimap edge: 11 o'clock for Tongues,
 		-- with Ammonia at 9 and Tally at 7. Not in DEFAULTS, so ApplyDefaults
 		-- above cannot set the flag before this check.

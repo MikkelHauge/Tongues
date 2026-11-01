@@ -635,14 +635,27 @@ local function CreateOptionsFrame()
 
 	-- Kinds of chat
 	AddDividerHeading("Channels")
-	local channelNote = AddNote(content, y, "Tick the kinds of chat Tongues may hide messages in. Say, yell and channels start ticked; everything else is off until you tick it, so friends always reach you.")
+	local channelNote = AddNote(content, y, "Tick the kinds of chat Tongues may hide messages in. Say, yell and the public channels start ticked; everything else is off until you tick it, so friends always reach you.")
 	y = y - TextHeight(channelNote) - 20
 
 	for index = 1, #ns.CHANNEL_GROUPS do
 		local group = ns.CHANNEL_GROUPS[index]
-		-- Communities chat only exists on Retail; Classic and Forever have no
-		-- such feature, so the checkbox would be dead weight there.
-		if group.key ~= "communities" or IsRetailClient() then
+		if group.key == "channels" then
+			-- One event carries every public channel, so the window splits it
+			-- into the two zone channels and the rest; the filter reads which
+			-- one a line came from (see Core/Filter.lua).
+			AddCheckboxRow(content, "General channel", nil,
+				function() return ns.db.channels.general end,
+				function(value) ns.db.channels.general = value end)
+			AddCheckboxRow(content, "Trade channel", nil,
+				function() return ns.db.channels.trade end,
+				function(value) ns.db.channels.trade = value end)
+			AddCheckboxRow(content, "Other channels (custom)", nil,
+				function() return ns.db.channels.channels end,
+				function(value) ns.db.channels.channels = value end)
+		elseif group.key ~= "communities" or IsRetailClient() then
+			-- Communities chat only exists on Retail; Classic and Forever have
+			-- no such feature, so the checkbox would be dead weight there.
 			AddCheckboxRow(content, group.label, nil,
 				function() return ns.db.channels[group.key] end,
 				function(value) ns.db.channels[group.key] = value end)
