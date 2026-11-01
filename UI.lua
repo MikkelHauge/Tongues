@@ -650,9 +650,10 @@ local function CreateOptionsFrame()
 			AddCheckboxRow(content, "Trade channel", nil,
 				function() return ns.db.channels.trade end,
 				function(value) ns.db.channels.trade = value end)
-			AddCheckboxRow(content, "Other channels (custom)", nil,
+			AddCheckboxRow(content, "Other channels (all)", nil,
 				function() return ns.db.channels.channels end,
-				function(value) ns.db.channels.channels = value end)
+				function(value) ns.db.channels.channels = value end,
+				{ "Hides every other channel:", "LocalDefense, WorldDefense, LookingForGroup", "and any custom channel." })
 		elseif group.key ~= "communities" or IsRetailClient() then
 			-- Communities chat only exists on Retail; Classic and Forever have
 			-- no such feature, so the checkbox would be dead weight there.
