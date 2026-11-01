@@ -252,6 +252,32 @@ local function IsFromPlayer(sender)
 	return (string.match(sender, "^([^%-]+)") or sender) == ownName
 end
 
+-- CHAT_MSG_CHANNEL carries every public channel, but they arrive as one
+-- event. The two zone channels are told apart here so General, Trade and the
+-- custom channels can have their own checkboxes. channelIndex is the reliable
+-- signal: General is channel 1 and Trade channel 2 whatever the client
+-- language; the lowercased base name is the fallback for clients whose event
+-- does not pass the index.
+local function ChannelSettingsKey(channelIndex, channelBaseName, channelName)
+	local base = type(channelBaseName) == "string" and string.lower(channelBaseName) or ""
+	if channelIndex == 1 or base == "general" then
+		return "general"
+	end
+	if channelIndex == 2 or base == "trade" then
+		return "trade"
+	end
+	if channelIndex == nil and base == "" and type(channelName) == "string" then
+		local lower = string.lower(channelName)
+		if string.sub(lower, 1, 7) == "general" then
+			return "general"
+		end
+		if string.sub(lower, 1, 5) == "trade" then
+			return "trade"
+		end
+	end
+	return "channels"
+end
+
 local function MessageFilter(chatFrame, event, message, sender, ...)
 	if not ns.db or not ns.db.enabled then
 		-- The master switch silences everything, quietly.
@@ -264,6 +290,12 @@ local function MessageFilter(chatFrame, event, message, sender, ...)
 		return false
 	end
 	local group = EVENT_GROUP[event]
+	if event == "CHAT_MSG_CHANNEL" then
+		-- The channel arguments: language, name, player2, flags, zone id,
+		-- channel index, base name.
+		local _, channelName, _, _, _, channelIndex, channelBaseName = ...
+		group = ChannelSettingsKey(channelIndex, channelBaseName, channelName)
+	end
 	if not group or not ns.db.channels[group] then
 		-- This kind of chat is not ticked in the window.
 		return false
