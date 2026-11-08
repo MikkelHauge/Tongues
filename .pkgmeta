@@ -1,0 +1,7 @@
+package-as: Tongues
+
+# Project docs stay on GitHub but are not part of the addon zip.
+ignore:
+  - README.md
+  - LICENSE
+  - CHANGELOG.md
